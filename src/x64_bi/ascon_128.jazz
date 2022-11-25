@@ -1,0 +1,49 @@
+// ----------------------------------------------------------------------------
+// Jasmin Implementation of the authenticated encryption scheme Ascon-128
+//
+// Note: 
+// - Implementation only uses 32-bit words except for pointers
+// - The state is bit interleaved
+// 
+// See required implementations for detailed information.
+// ----------------------------------------------------------------------------
+
+param int ASCON_RATE = 8;
+param int ASCON_IV_H   = 0x80210000;
+param int ASCON_IV_L   = 0x08220000;
+
+require "jasmin/ascon_aead.jinc"
+
+// ----------------------------------------------------------------------------
+// Ascon AEAD Encryption
+//
+// m: *const u8 -> len: mlen
+// c: *mut u8   -> len: (mlen + 16) -> tag written to the first 16 bytes!
+// a: *const u8 -> len: alen
+// p: [u8; 32]  -> nonce = p[0..2]; key = p[2..4] 
+// clen: u32
+// alen: u32
+// ----------------------------------------------------------------------------
+export
+fn ascon_128_encrypt(reg u64 m c, reg u32 mlen, reg u64 a, reg u32 alen, reg u64 p) -> reg u32 {
+    reg u32 res;
+    res = encrypt(m, c, mlen, a, alen, p);
+    return res;
+}
+
+// ----------------------------------------------------------------------------
+// Ascon AEAD Decryption
+//
+// m: *mut u8   -> len: (clen - 16)
+// c: *const u8 -> len: clen -> tag expected at the first 16 bytes!
+// a: *const u8 -> len: alen
+// p: [u8; 32]  -> nonce = p[0..2]; key = p[2..4] 
+// clen: u32
+// alen: u32
+// ----------------------------------------------------------------------------
+export
+fn ascon_128_decrypt(reg u64 m c, reg u32 clen, reg u64 a, reg u32 alen, reg u64 p) -> reg u32 {
+    reg u32 res;
+    res = decrypt(m, c, clen, a, alen, p);
+    return res;
+}

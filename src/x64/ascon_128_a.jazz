@@ -1,0 +1,44 @@
+// ----------------------------------------------------------------------------
+// Jasmin Implementation of the authenticated encryption scheme Ascon-128a
+//
+// See required implementations for detailed information.
+// ----------------------------------------------------------------------------
+
+param int ASCON_RATE = 16;
+param int ASCON_IV   = 0x80800c0800000000;
+
+require "jasmin/ascon_aead.jinc"
+
+// ----------------------------------------------------------------------------
+// Ascon AEAD Encryption
+//
+// m: *const u8 -> len: mlen
+// c: *mut u8   -> len: (mlen + 16)
+// a: *const u8 -> len: alen
+// p: [u8; 32]  -> nonce = p[0..2]; key = p[2..4] 
+// clen: u64
+// alen: u64
+// ----------------------------------------------------------------------------
+export
+fn ascon_128_a_encrypt(reg u64 m c mlen a alen p) -> reg u64 {
+    reg u64 res;
+    res = encrypt(m, c, mlen, a, alen, p);
+    return res;
+}
+
+// ----------------------------------------------------------------------------
+// Ascon AEAD Decryption
+//
+// m: *mut u8   -> len: (clen - 16)
+// c: *const u8 -> len: clen
+// a: *const u8 -> len: alen
+// p: [u8; 32]  -> nonce = p[0..2]; key = p[2..4] 
+// clen: u64
+// alen: u64
+// ----------------------------------------------------------------------------
+export
+fn ascon_128_a_decrypt(reg u64 m c clen a alen p) -> reg u64 {
+    reg u64 res;
+    res = decrypt(m, c, clen, a, alen, p);
+    return res;
+}

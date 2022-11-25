@@ -1,0 +1,5 @@
+Array*
+WArray*
+
+*.ec
+!*_proof.ec

@@ -1,0 +1,99 @@
+// ----------------------------------------------------------------------------
+// Configurable implementation of Ascon's encryption scheme with
+// associated data. (Ascon128, Ascon128a).
+// 
+// ASSUMPTIONS:
+// - All external values (plaintext, ciphertext, ad) are 64 bit aligned
+// - encrypt: Writes tag to the start of the ciphertext.
+// - decrypt: Expects tag at the start of the ciphertext.
+//
+// REQUIRES PARAMETER THE FOLLOWING PARAMETERS WHEN INCLUDED:
+// - 'ASCON_RATE' = 16|8
+// - 'ASCON_IV_L', 'ASCON_IV_H' (bit interleaved!)
+//
+// Sources:
+// - Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer:
+//   Ascon v1.2 Submission to NIST 
+//   https://doi.org/10.1007/s00145-021-09398-9
+// - Ascon reference implementation (GitHub)
+//   https://github.com/ascon/ascon-c
+// ----------------------------------------------------------------------------
+
+
+require "ascon_core.jinc"
+require "ascon_p.jinc"
+require "word.jinc"
+
+
+inline
+fn encrypt(reg u64 m c, reg u32 mlen, reg u64 a, reg u32 alen, reg u64 p) -> reg u32 {
+    stack u32[10] _x;
+    stack u32[4] _k;
+    stack u32[4] _n;
+    stack u32 _mlen, _alen;
+    stack u64 _m, _c, _a, _t;
+
+    // Spill argument registers
+    _mlen = mlen; _alen = alen;
+    _m = m; _c = c; _a = a;
+
+    // Store pointer to tag (start of ciphertext)
+    _t = _c;
+    _c += 16;
+
+    _n, _k = ascon_load_key_nonce(p);
+
+    _x = ascon_init(_n, _k);
+
+    _x = ascon_adata(_x, _a, _alen);
+
+    _x = ascon_encrypt(_x, _m, _c, _mlen);
+
+    _x = ascon_finalize(_x, _k);
+
+    // Store Tag
+    reg u32 _xl, _xh, res;
+
+    c = _t; 
+    _xl = _x[3 * 2 + 0];
+    _xh = _x[3 * 2 + 1];
+    store_word(_xh, _xl, c);
+    c += 8; 
+    _xl = _x[4 * 2 + 0];
+    _xh = _x[4 * 2 + 1];
+    store_word(_xh, _xl, c);
+
+    res = 0;
+    return res;
+}
+
+inline
+fn decrypt(reg u64 m c, reg u32 clen, reg u64 a, reg u32 alen, reg u64 p) -> reg u32 {
+    stack u32[10] _x;
+    stack u32[4] _k;
+    stack u32[4] _n;
+    stack u32 _clen, _alen;
+    stack u64 _m, _c, _a, _t;
+
+    // Spill argument registers
+    _clen = clen; _alen = alen;
+    _m = m; _c = c; _a = a;
+
+    // Store pointer to tag (start of ciphertext)
+    _t = c;
+
+    _n, _k = ascon_load_key_nonce(p);
+
+    _x = ascon_init(_n, _k);
+    
+    _x = ascon_adata(_x, _a, _alen);
+
+    _x = ascon_decrypt(_x, _m, _c, _clen);
+
+    _x = ascon_finalize(_x, _k);
+
+    // Validate tag
+    reg u32 res;
+    res = ascon_validate_tag(_x, _t);
+    return res;
+}

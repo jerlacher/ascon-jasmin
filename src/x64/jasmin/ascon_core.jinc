@@ -1,0 +1,257 @@
+// ----------------------------------------------------------------------------
+// Core phases of Ascon's AEAD scheme.
+//
+// REQUIRES PARAMETER THE FOLLOWING PARAMETERS WHEN INCLUDED:
+// - 'ASCON_RATE' = 16|8
+// - 'ASCON_IV'
+//
+// Sources:
+// - Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer:
+//   Ascon v1.2 Submission to NIST 
+//   https://doi.org/10.1007/s00145-021-09398-9
+// - Ascon reference implementation (GitHub)
+//   https://github.com/ascon/ascon-c
+// ----------------------------------------------------------------------------
+
+require "ascon_p.jinc"
+require "word.jinc"
+
+inline
+fn ascon_load_key_nonce(reg u64 p) -> stack u64[2], stack u64[2] {
+    reg u64 _t;
+    stack u64[2] _n _k;
+
+    _t = load_word(p); _n[0] = _t; p += 8;
+    _t = load_word(p); _n[1] = _t; p += 8;
+    _t = load_word(p); _k[0] = _t; p += 8;
+    _t = load_word(p); _k[1] = _t;
+
+    return _n, _k;
+}
+
+inline
+fn ascon_init(stack u64[2] n k) -> reg u64[5] {
+    reg u64[5] _x;
+
+    _x[0] = ASCON_IV;
+    _x[1] = k[0];
+    _x[2] = k[1];
+    _x[3] = n[0];
+    _x[4] = n[1];
+
+    _x = ascon_p12(_x);
+
+    _x[3] ^= k[0];
+    _x[4] ^= k[1];
+
+    return _x;
+}
+
+
+inline
+fn ascon_adata(reg u64[5] x, reg u64 a, reg u64 alen) -> reg u64[5] {
+    reg u64 _t;
+
+    if (alen > 0) {
+        while (alen >= ASCON_RATE) {
+            _t = load_word(a);
+            x[0] ^= _t;
+            a += 8;
+           
+            if (ASCON_RATE == 16) {
+                _t = load_word(a);
+                x[1] ^= _t;
+                a += 8;
+               
+                x = ascon_p8(x);
+            } else {
+                x = ascon_p6(x);
+            }
+           
+            alen -= ASCON_RATE;
+        }
+
+        if (ASCON_RATE == 16 && alen >= 8) {
+            _t = load_word(a);
+            x[0] ^= _t;
+            a += 8;
+            alen -= 8;
+       
+            _t = load_bytes(a, alen);
+            x[1] ^= _t;
+
+            x[1] = pad(x[1], alen);
+        } else {
+            _t = load_bytes(a, alen);
+            x[0] ^= _t;
+            x[0] = pad(x[0], alen);
+        }
+
+        if (ASCON_RATE == 16) {
+            x = ascon_p8(x);
+        } else {
+            x = ascon_p6(x);
+        }
+    }
+
+    // Addition of 1 
+    x[4] ^= 0x1;
+
+    return x;
+}
+
+inline
+fn ascon_encrypt(reg u64[5] x, reg u64 m, reg u64 c, reg u64 mlen) -> reg u64[5] {
+    reg u64 _t1, _t2;
+
+    // Blocks 0...s-1
+    while (mlen >= ASCON_RATE) {
+        _t1 = load_word(m);
+        x[0] ^= _t1; _t2 = x[0];
+        store_word(_t2, c);
+        m += 8;
+        c += 8;
+
+        if (ASCON_RATE == 16) {
+            _t1 = load_word(m);
+            x[1] ^= _t1; _t2 = x[1];
+            store_word(_t2, c);
+            m += 8;
+            c += 8;
+
+            x = ascon_p8(x);
+        } else {
+            x = ascon_p6(x);
+        }
+
+        mlen -= ASCON_RATE;
+    }
+    //// Block s
+    if (ASCON_RATE == 16 && mlen >= 8) {
+        _t1 = load_word(m);
+        x[0] ^= _t1; _t2 = x[0];
+        store_word(_t2, c);
+        m += 8;
+        c += 8;
+        mlen -= 8;
+
+        _t1 = load_bytes(m, mlen);
+        x[1] ^= _t1;
+        _t2 = x[1];
+        store_bytes(_t2, c, mlen);
+
+        x[1] = pad(x[1], mlen);
+    } else {
+        _t1 = load_bytes(m, mlen);
+        x[0] ^= _t1;
+        _t2 = x[0];
+        store_bytes(_t2, c, mlen);
+       
+        x[0] = pad(x[0], mlen);
+    }
+
+    return x;
+}
+
+inline
+fn ascon_decrypt(reg u64[5] x, reg u64 m, reg u64 c, reg u64 clen) -> reg u64[5] {
+    reg u64 _t1, _t2;
+
+    // Blocks 0...s-1
+    c += 16;
+    clen -= 16;
+    while (clen >= ASCON_RATE) {
+        _t1 = load_word(c);
+        _t2 = x[0] ^ _t1;
+        store_word(_t2, m);
+        x[0] = _t1;
+        m += 8;
+        c += 8;
+
+        if (ASCON_RATE == 16) {
+            _t1 = load_word(c);
+            _t2 = x[1] ^ _t1;
+            store_word(_t2, m);
+            x[1] = _t1;
+            m += 8;
+            c += 8;
+
+            x = ascon_p8(x);
+        } else {
+            x = ascon_p6(x);
+        }
+
+        clen -= ASCON_RATE;
+    }
+    // Block s
+    if (ASCON_RATE == 16 && clen >= 8) {
+        _t1 = load_word(c);
+        _t2 = x[0] ^ _t1;
+        store_word(_t2, m);
+        x[0] = _t1;
+
+        m += 8;
+        c += 8;
+        clen -= 8;
+
+        _t1 = load_bytes(c, clen);
+        _t2 = x[1];
+        x[1] = clear_bytes(_t2, clen);
+        x[1] |= _t1;
+
+        _t2 ^= _t1;
+        store_bytes(_t2, m, clen);
+        
+        _t1 = pad(x[1], clen);
+        x[1] = _t1;
+    } else {
+        _t1 = load_bytes(c, clen);
+        _t2 = x[0];
+        x[0] = clear_bytes(_t2, clen);
+        x[0] |= _t1;
+
+        _t2 ^= _t1;
+        store_bytes(_t2, m, clen);
+        
+        _t1 = pad(x[0], clen);
+        x[0] = _t1;
+    }
+
+    return x;
+}
+
+inline
+fn ascon_finalize(reg u64[5] x, stack u64[2] k) -> reg u64[5] {
+    if (ASCON_RATE == 16) {
+        x[2] ^= k[0];
+        x[3] ^= k[1];
+    } else {
+        x[1] ^= k[0];
+        x[2] ^= k[1];
+    }
+
+    x = ascon_p12(x);
+
+    x[3] ^= k[0];
+    x[4] ^= k[1];
+
+    return x;
+}
+
+inline
+fn ascon_validate_tag(reg u64[5] x, stack u64 t) -> reg u64 {
+    reg u64 _res, _t1, _t2, _c;
+
+    _c  = t;
+    _t1 = load_word(_c);
+    _t1 ^= x[3];
+
+    _c += 8;
+    _t2 = load_word(_c);
+    _t2 ^= x[4];
+
+    _t1 |= _t2;
+    _res = not_zero(_t1);
+    return _res;
+}
+

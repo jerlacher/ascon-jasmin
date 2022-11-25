@@ -1,0 +1,118 @@
+// ----------------------------------------------------------------------------
+// Jasmin Implementation of the Ascon's permutation for 6, 8, 12 rounds.
+//
+//
+// Sources:
+// - Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer:
+//   Ascon v1.2 Submission to NIST 
+//   https://doi.org/10.1007/s00145-021-09398-9
+// - Ascon reference implementation (GitHub)
+//   https://github.com/ascon/ascon-c
+// ----------------------------------------------------------------------------
+
+inline
+fn rot_64(reg u64 x, inline int c) -> reg u64 {
+    reg u64 _t1, _t2;
+
+    _t1 = x; _t2 = x;
+    _t1 >>= c; _t2 <<= -c;
+    _t1 ^= _t2;
+
+    return _t1;
+}
+
+inline
+fn rotate(reg u64 x, inline int c1, inline int c2) -> reg u64 {
+    reg u64 _x1, _x2;
+
+    _x1 = rot_64(x, c1); 
+    _x2 = rot_64(x, c2);
+
+    x ^= _x1; 
+    x ^= _x2;
+    return x;
+}
+
+inline
+fn substitution(reg u64[5] x) -> reg u64[5] {
+    reg u64[5] t;
+
+    x[0] ^=  x[4]; x[4] ^=  x[3]; x[2] ^=  x[1];
+    t[0]  =  x[0]; t[1]  =  x[1]; t[2]  =  x[2]; t[3]  =  x[3]; t[4]  =  x[4];
+    t[0]  = !t[0]; t[1]  = !t[1]; t[2]  = !t[2]; t[3]  = !t[3]; t[4]  = !t[4];
+    t[0] &=  x[1]; t[1] &=  x[2]; t[2] &=  x[3]; t[3] &=  x[4]; t[4] &=  x[0];
+    x[0] ^=  t[1]; x[1] ^=  t[2]; x[2] ^=  t[3]; x[3] ^=  t[4]; x[4] ^=  t[0];
+    x[1] ^=  x[0]; x[0] ^=  x[4]; x[3] ^=  x[2]; x[2]  = !x[2];
+
+    return x;
+}
+
+inline
+fn linear(reg u64[5] x) -> reg u64[5] {
+    reg u64 _x;
+    _x = rotate(x[0], 19, 28);
+    x[0] = _x;
+    _x = rotate(x[1], 61, 39);
+    x[1] = _x;
+    _x = rotate(x[2],  1,  6);
+    x[2] = _x;
+    _x = rotate(x[3], 10, 17);
+    x[3] = _x;
+    _x = rotate(x[4],  7, 41);
+    x[4] = _x;
+
+    return x;
+}
+
+inline 
+fn round(reg u64[5] x, inline int c) -> reg u64[5] {
+    x[2] ^= c;
+    x = substitution(x);
+    x = linear(x);
+
+    return x;
+}
+
+inline
+fn ascon_p6(reg u64[5] x) -> reg u64[5] {
+    x = round(x, 0x96);
+    x = round(x, 0x87);
+    x = round(x, 0x78);
+    x = round(x, 0x69);
+    x = round(x, 0x5a);
+    x = round(x, 0x4b);
+
+    return x;
+}                
+
+inline
+fn ascon_p8(reg u64[5] x) -> reg u64[5] {
+    x = round(x, 0xb4);
+    x = round(x, 0xa5);
+    x = round(x, 0x96);
+    x = round(x, 0x87);
+    x = round(x, 0x78);
+    x = round(x, 0x69);
+    x = round(x, 0x5a);
+    x = round(x, 0x4b);
+
+    return x;
+}                
+
+inline
+fn ascon_p12(reg u64[5] x) -> reg u64[5] {
+    x = round(x, 0xf0);
+    x = round(x, 0xe1);
+    x = round(x, 0xd2);
+    x = round(x, 0xc3);
+    x = round(x, 0xb4);
+    x = round(x, 0xa5);
+    x = round(x, 0x96);
+    x = round(x, 0x87);
+    x = round(x, 0x78);
+    x = round(x, 0x69);
+    x = round(x, 0x5a);
+    x = round(x, 0x4b);
+
+    return x;
+}                

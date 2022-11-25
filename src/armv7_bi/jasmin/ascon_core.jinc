@@ -1,0 +1,390 @@
+// ----------------------------------------------------------------------------
+// Core phases of Ascon's AEAD scheme.
+//
+// REQUIRES PARAMETER THE FOLLOWING PARAMETERS WHEN INCLUDED:
+// - 'ASCON_RATE' = 16|8
+// - 'ASCON_IV'
+//
+// Sources:
+// - Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer:
+//   Ascon v1.2 Submission to NIST 
+//   https://doi.org/10.1007/s00145-021-09398-9
+// - Ascon reference implementation (GitHub)
+//   https://github.com/ascon/ascon-c
+// ----------------------------------------------------------------------------
+
+require "ascon_p.jinc"
+require "word.jinc"
+
+inline
+fn ascon_load_key_nonce(reg u32 p) -> stack u32[4], stack u32[4] {
+    reg u32 _th, _tl, _p;
+    stack u32[4] _n _k;
+    _p = p;
+
+    _tl, _th = load_word(_p); _n[0] = _tl; _n[1] = _th; _p += 8;
+    _tl, _th = load_word(_p); _n[2] = _tl; _n[3] = _th; _p += 8;
+    _tl, _th = load_word(_p); _k[0] = _tl; _k[1] = _th; _p += 8;
+    _tl, _th = load_word(_p); _k[2] = _tl; _k[3] = _th;
+
+    return _n, _k;
+}
+
+inline
+fn ascon_init(stack u32[4] n k) -> stack u32[10] {
+    reg u32 _th, _tl;
+    reg u32[10] _x;
+    stack u32[10] x;
+
+    _tl =  ASCON_IV_L;
+    _th =  ASCON_IV_H;
+    _x[0 * 2 + 0] =  _tl; _x[0 * 2 + 1] =  _th;
+    _x[1 * 2 + 0] = k[0]; _x[1 * 2 + 1] = k[1];
+    _x[2 * 2 + 0] = k[2]; _x[2 * 2 + 1] = k[3];
+    _x[3 * 2 + 0] = n[0]; _x[3 * 2 + 1] = n[1];
+    _x[4 * 2 + 0] = n[2]; _x[4 * 2 + 1] = n[3];
+
+    x[0] = _x[0]; x[1] = _x[1]; x[2] = _x[2]; x[3] = _x[3]; x[4] = _x[4]; x[5] = _x[5]; x[6] = _x[6]; x[7] = _x[7]; x[8] = _x[8]; x[9] = _x[9];
+    x = ascon_p12(x);
+    _x[0] = x[0]; _x[1] = x[1]; _x[2] = x[2]; _x[3] = x[3]; _x[4] = x[4]; _x[5] = x[5]; _x[6] = x[6]; _x[7] = x[7]; _x[8] = x[8]; _x[9] = x[9];
+
+    _tl = k[0]; _x[3 * 2 + 0] ^= _tl;
+    _tl = k[1]; _x[3 * 2 + 1] ^= _th;
+    _tl = k[2]; _x[4 * 2 + 0] ^= _tl;
+    _tl = k[3]; _x[4 * 2 + 1] ^= _th;
+
+    x[0] = _x[0]; x[1] = _x[1]; x[2] = _x[2]; x[3] = _x[3]; x[4] = _x[4]; x[5] = _x[5]; x[6] = _x[6]; x[7] = _x[7]; x[8] = _x[8]; x[9] = _x[9];
+
+    return x;
+}
+
+
+inline
+fn ascon_adata(stack u32[10] x, stack u32 a, stack u32 alen) -> stack u32[10] {
+    reg u32 _th, _tl, _xl, _xh, _alen;
+    reg u32 _a;
+
+    _alen = alen;
+    if (_alen > 0) {
+        while (_alen >= ASCON_RATE) {
+            _a = a;
+            _tl, _th = load_word(_a);
+            _xl = x[0 * 2 + 0]; _xl ^= _tl; x[0 * 2 + 0] = _xl;
+            _xh = x[0 * 2 + 1]; _xh ^= _th; x[0 * 2 + 1] = _xh; 
+            _a += 8;
+           
+            if (ASCON_RATE == 16) {
+                _tl, _th = load_word(_a);
+                _xl = x[1 * 2 + 0]; _xl ^= _tl; x[1 * 2 + 0] = _xl;
+                _xh = x[1 * 2 + 1]; _xh ^= _th; x[1 * 2 + 1] = _xh; 
+                _a += 8;
+               
+                a = _a;
+                alen = _alen;
+                x = ascon_p8(x);
+            } else {
+                a = _a;
+                alen = _alen;
+                x = ascon_p6(x);
+            }
+           
+            _alen = alen;
+            _alen -= ASCON_RATE;
+        }
+
+        _a = a;
+        if (ASCON_RATE == 16 && _alen >= 8) {
+            _tl, _th = load_word(_a);
+            _xl = x[0 * 2 + 0]; _xl ^= _tl; x[0 * 2 + 0] = _xl;
+            _xh = x[0 * 2 + 1]; _xh ^= _th; x[0 * 2 + 1] = _xh; 
+
+            _a += 8;
+            _alen -= 8;
+       
+            _tl, _th = load_bytes(_a, _alen);
+            _xl = x[1 * 2 + 0];
+            _xh = x[1 * 2 + 1];
+            _xl ^= _tl;
+            _xh ^= _th;
+            _xh, _xl = pad(_xh, _xl, _alen);
+            x[1 * 2 + 0] = _xl;
+            x[1 * 2 + 1] = _xh;
+        } else {
+            _tl, _th = load_bytes(_a, _alen);
+
+            _xl = x[0 * 2 + 0];
+            _xh = x[0 * 2 + 1];
+            _xl ^= _tl;
+            _xh ^= _th;
+            _xh, _xl = pad(_xh, _xl, _alen);
+            x[0 * 2 + 0] = _xl;
+            x[0 * 2 + 1] = _xh;
+        }
+
+        if (ASCON_RATE == 16) {
+            x = ascon_p8(x);
+        } else {
+            x = ascon_p6(x);
+        }
+    }
+
+    // Addition of 1 
+    _xl = x[4 * 2 + 0];
+    _xl ^= 0x1;
+    x[4 * 2 + 0] = _xl;
+
+    return x;
+}
+
+inline
+fn ascon_encrypt(stack u32[10] x, stack u32 m c, stack u32 mlen) -> stack u32[10] {
+    reg u32 _xl, _xh, _tl, _th, _mlen;
+    reg u32 _m, _c;
+
+    // Blocks 0...s-1
+    _mlen = mlen;
+    while (_mlen >= ASCON_RATE) {
+        _m = m;
+        _c = c;
+        _tl, _th = load_word(_m);
+        _xl = x[0 * 2 + 0]; 
+        _xh = x[0 * 2 + 1];
+        _xl ^= _tl;
+        _xh ^= _th;
+        store_word(_xh, _xl, _c);
+        x[0 * 2 + 0] = _xl;
+        x[0 * 2 + 1] = _xh;
+
+        _m += 8;
+        _c += 8;
+
+        if (ASCON_RATE == 16) {
+            _tl, _th = load_word(_m);
+            _xl = x[1 * 2 + 0];
+            _xh = x[1 * 2 + 1];
+            _xl ^= _tl;
+            _xh ^= _th;
+            store_word(_xh, _xl, _c);
+            x[1 * 2 + 0] = _xl;
+            x[1 * 2 + 1] = _xh;
+
+            _m += 8;
+            _c += 8;
+
+            // spill registers
+            m = _m;
+            c = _c;
+            x = ascon_p8(x);
+        } else {
+            // spill registers
+            m = _m;
+            c = _c;
+            x = ascon_p6(x);
+        }
+
+        _mlen = mlen;
+        _mlen -= ASCON_RATE;
+        mlen = _mlen;
+    }
+
+    _m = m;
+    _c = c;
+    _mlen = mlen;
+    // Block s
+    if (ASCON_RATE == 16 && _mlen >= 8) {
+        _c = c;
+        _tl, _th = load_word(_m);
+        _xl = x[0 * 2 + 0];
+        _xh = x[0 * 2 + 1];
+        _xl ^= _tl;
+        _xh ^= _th;
+        store_word(_xh, _xl, _c);
+        x[0 * 2 + 0] = _xl;
+        x[0 * 2 + 1] = _xh;
+
+        _m += 8;
+        _c += 8;
+        _mlen -= 8;
+
+        _tl, _th = load_bytes(_m, _mlen);
+        _xl = x[1 * 2 + 0];
+        _xh = x[1 * 2 + 1];
+        _xl ^= _tl;
+        _xh ^= _th;
+        store_bytes(_xh, _xl, _c, _mlen);
+
+        _xh, _xl = pad(_xh, _xl, _mlen);
+        x[1 * 2 + 0] = _xl; 
+        x[1 * 2 + 1] = _xh;
+    } else {
+        _tl, _th = load_bytes(_m, _mlen);
+        _xl = x[0 * 2 + 0];
+        _xh = x[0 * 2 + 1];
+        _xl ^= _tl;
+        _xh ^= _th;
+        store_bytes(_xh, _xl, _c, _mlen);
+       
+        _xh, _xl = pad(_xh, _xl, _mlen);
+        x[0 * 2 + 0] = _xl;
+        x[0 * 2 + 1] = _xh;
+    }
+
+    return x;
+}
+
+inline
+fn ascon_decrypt(stack u32[10] x, stack u32 m c, stack u32 clen) -> stack u32[10] {
+    reg u32 _t0h, _t0l, _t1h, _t1l, _xl, _xh, _clen;
+    reg u32 _m, _c, _clen;
+
+
+    // Blocks 0...s-1
+    _c = c;
+    _c += 16;
+    c = _c;
+    _clen = clen;
+    _clen -= 16;
+    clen = _clen;
+    while (_clen >= ASCON_RATE) {
+        _c = c;
+        _t0l, _t0h = load_word(_c);
+        _xl = x[0 * 2 + 0];
+        _xh = x[0 * 2 + 1];
+        _xl ^= _t0l;
+        _xh ^= _t0h;
+        _m = m;
+        store_word(_xh, _xl, _m);
+        x[0 * 2 + 0] = _t0l;
+        x[0 * 2 + 1] = _t0h;
+
+        _m += 8;
+        _c += 8;
+
+        if (ASCON_RATE == 16) {
+            _t0l, _t0h = load_word(_c);
+            _xl = x[1 * 2 + 0];
+            _xh = x[1 * 2 + 1];
+            _xl ^= _t0l;
+            _xh ^= _t0h;
+            store_word(_xh, _xl, _m);
+            x[1 * 2 + 0] = _t0l;
+            x[1 * 2 + 1] = _t0h;
+
+            _m += 8;
+            _c += 8;
+
+            // spill registers
+            m = _m;
+            c = _c;
+            x = ascon_p8(x);
+        } else {
+            // spill registers
+            m = _m;
+            c = _c;
+            x = ascon_p6(x);
+        }
+
+        _clen = clen;
+        _clen -= ASCON_RATE;
+        clen = _clen;
+    }
+
+    _m = m;
+    _c = c;
+    _clen = clen;
+    // Block s
+    if (ASCON_RATE == 16 && _clen >= 8) {
+        _t0l, _t0h = load_word(_c);
+        _xl = x[0 * 2 + 0];
+        _xh = x[0 * 2 + 1];
+        _xl ^= _t0l;
+        _xh ^= _t0h;
+        store_word(_xh, _xl, _m);
+        x[0 * 2 + 0] = _t0l;
+        x[0 * 2 + 1] = _t0h;
+
+        _m += 8;
+        _c += 8;
+        _clen -= 8;
+
+        _t0l, _t0h = load_bytes(_c, _clen);
+        _t1l = x[1 * 2 + 0];
+        _t1h = x[1 * 2 + 1];
+        _xh, _xl = clear_bytes(_t1h, _t1l, _clen);
+        _xl |= _t0l;
+        _xh |= _t0h;
+
+        _t1l ^= _t0l;
+        _t1h ^= _t0h;
+        store_bytes(_t1h, _t1l, _m, _clen);
+        
+        _t0h, _t0l = pad(_xh, _xl, _clen);
+        x[1 * 2 + 0] = _t0l;
+        x[1 * 2 + 1] = _t0h;
+    } else {
+        _t0l, _t0h = load_bytes(_c, _clen);
+        _t1l = x[0 * 2 + 0];
+        _t1h = x[0 * 2 + 1];
+        _xh, _xl = clear_bytes(_t1h, _t1l, _clen);
+        _xl |= _t0l;
+        _xh |= _t0h;
+
+        _t1l ^= _t0l;
+        _t1h ^= _t0h;
+        store_bytes(_t1h, _t1l, _m, _clen);
+        
+        _t0h, _t0l = pad(_xh, _xl, _clen);
+        x[0 * 2 + 0] = _t0l;
+        x[0 * 2 + 1] = _t0h;
+    }
+
+    return x;
+}
+
+inline
+fn ascon_finalize(stack u32[10] x, stack u32[4] k) -> stack u32[10] {
+    reg u32 _x1, _x2;
+    if (ASCON_RATE == 16) {
+        _x1 = k[0]; _x2 = x[2 * 2 + 0]; _x2 ^= _x1; x[2 * 2 + 0] = _x2; 
+        _x1 = k[1]; _x2 = x[2 * 2 + 1]; _x2 ^= _x1; x[2 * 2 + 1] = _x2;
+        _x1 = k[2]; _x2 = x[3 * 2 + 0]; _x2 ^= _x1; x[3 * 2 + 0] = _x2;
+        _x1 = k[3]; _x2 = x[3 * 2 + 1]; _x2 ^= _x1; x[3 * 2 + 1] = _x2;
+    } else {
+        _x1 = k[0]; _x2 = x[1 * 2 + 0]; _x2 ^= _x1; x[1 * 2 + 0] = _x2;
+        _x1 = k[1]; _x2 = x[1 * 2 + 1]; _x2 ^= _x1; x[1 * 2 + 1] = _x2; 
+        _x1 = k[2]; _x2 = x[2 * 2 + 0]; _x2 ^= _x1; x[2 * 2 + 0] = _x2;
+        _x1 = k[3]; _x2 = x[2 * 2 + 1]; _x2 ^= _x1; x[2 * 2 + 1] = _x2;
+    }
+
+    x = ascon_p12(x);
+
+    _x1 = k[0]; _x2 = x[3 * 2 + 0]; _x2 ^= _x1; x[3 * 2 + 0] = _x2; 
+    _x1 = k[1]; _x2 = x[3 * 2 + 1]; _x2 ^= _x1; x[3 * 2 + 1] = _x2;
+    _x1 = k[2]; _x2 = x[4 * 2 + 0]; _x2 ^= _x1; x[4 * 2 + 0] = _x2;
+    _x1 = k[3]; _x2 = x[4 * 2 + 1]; _x2 ^= _x1; x[4 * 2 + 1] = _x2;
+
+    return x;
+}
+
+inline
+fn ascon_validate_tag(stack u32[10] x, stack u32 t) -> reg u32 {
+    reg u32 _c, _th, _tl, _xh, _xl, _x; 
+
+    _c  = t;
+    _xl, _xh = load_word(_c);
+    _x = x[3 * 2 + 0]; _xl ^= _x;
+    _x = x[3 * 2 + 1]; _xh ^= _x;
+    _c += 8;
+    _tl, _th = load_word(_c);
+    _x = x[4 * 2 + 0]; _tl ^= _x; 
+    _x = x[4 * 2 + 1]; _th ^= _x; 
+
+    _xl |= _xh;
+    _xl |= _tl;
+    _xl |= _th;
+
+    _xl = not_zero(_xl);
+
+    return _xl;
+}
+

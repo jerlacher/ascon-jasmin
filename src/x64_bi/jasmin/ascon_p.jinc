@@ -1,0 +1,166 @@
+// ----------------------------------------------------------------------------
+// Jasmin Implementation of the Ascon's permutation for 6, 8, 12 rounds.
+// 
+// Note:
+// - Each state word is represented by 2 32-bit words (bit interleaved!)
+// - Round function is implemented on the basis of the bit interleaved 
+//   reference implementaion in C for armv7m!
+// - Each line of the round function is annotated with the respective
+//   line in the reference implementation.
+//
+// Sources:
+// - Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer:
+//   Ascon v1.2 Submission to NIST 
+//   https://doi.org/10.1007/s00145-021-09398-9
+// - Ascon reference implementation (GitHub)
+//   https://github.com/ascon/ascon-c
+// ----------------------------------------------------------------------------
+
+inline
+fn rot_32(reg u32 x, inline int c) -> reg u32 {
+    reg u32 _x;
+
+    _x = x;
+    _, _, _x = #ROR_32(_x, c);
+
+    return _x;
+}
+
+inline 
+fn round(reg u32[10] x, inline int ch, inline int cl) -> reg u32[10] {
+    reg u32 _x, _t0, _t1;
+
+    // Low
+    x[0 * 2 + 0] ^= x[4 * 2 + 0];                                 // eor %[x0_l], %[x0_l], %[x4_l]
+    x[4 * 2 + 0] ^= x[3 * 2 + 0];                                 // eor %[x4_l], %[x4_l], %[x3_l]
+    x[2 * 2 + 0] ^= x[1 * 2 + 0];                                 // eor %[x2_l], %[x2_l], %[x1_l]
+                                                                  
+    _t0 = x[0 * 2 + 0]; _t0 = !_t0; _t0 |= x[4 * 2 + 0];          // orn %[tmp0], %[x4_l], %[x0_l]
+    x[2 * 2 + 0] ^= cl;                                           // eor %[x2_l], %[x2_l], %[C_e]
+    _t1 = x[1 * 2 + 0]; _t1 = !_t1; _t1 &= x[2 * 2 + 0];          // bic %[tmp1], %[x2_l], %[x1_l]
+                                                                  
+    x[0 * 2 + 0] ^= _t1;                                          // eor %[x0_l], %[x0_l], %[tmp1]
+    _t1 = x[4 * 2 + 0]; _t1 = !_t1; _t1 |= x[3 * 2 + 0];          // orn %[tmp1], %[x3_l], %[x4_l]
+                                                                  
+    x[2 * 2 + 0] ^= _t1;                                          // eor %[x2_l], %[x2_l], %[tmp1]
+    _t1 = x[0 * 2 + 0]; _t1 = !_t1; _t1 &= x[1 * 2 + 0];          // bic %[tmp1], %[x1_l], %[x0_l]
+                                                                  
+    x[4 * 2 + 0] ^= _t1;                                          // eor %[x4_l], %[x4_l], %[tmp1]
+    _t1 = x[2 * 2 + 0]; _t1 &= x[3 * 2 + 0];                      // and %[tmp1], %[x3_l], %[x2_l]
+                                                                  
+    x[1 * 2 + 0] ^= _t1;                                          // eor %[x1_l], %[x1_l], %[tmp1]
+    x[3 * 2 + 0] ^= _t0;                                          // eor %[x3_l], %[x3_l], %[tmp0]
+                                                                  
+    x[1 * 2 + 0] ^=  x[0 * 2 + 0];                                // eor %[x1_l], %[x1_l], %[x0_l]    
+    x[3 * 2 + 0] ^=  x[2 * 2 + 0];                                // eor %[x3_l], %[x3_l], %[x2_l]
+    x[0 * 2 + 0] ^=  x[4 * 2 + 0];                                // eor %[x0_l], %[x0_l], %[x4_l]
+                                                                  
+    // High                                                       
+    x[0 * 2 + 1] ^= x[4 * 2 + 1];                                 // eor %[x0_h], %[x0_h], %[x4_h]
+    x[4 * 2 + 1] ^= x[3 * 2 + 1];                                 // eor %[x4_h], %[x4_h], %[x3_h]
+    x[2 * 2 + 1] ^= ch;                                           // eor %[x2_h], %[x2_h], %[C_o]
+    x[2 * 2 + 1] ^= x[1 * 2 + 1];                                 // eor %[x2_h], %[x2_h], %[x1_h]
+                                                                  
+    _t0 = x[0 * 2 + 1]; _t0 = !_t0; _t0 |= x[4 * 2 + 1];          // orn %[tmp0], %[x4_h], %[x0_h]
+    _t1 = x[1 * 2 + 1]; _t1 = !_t1; _t1 &= x[2 * 2 + 1];          // bic %[tmp1], %[x2_h], %[x1_h]
+                                                                  
+    x[0 * 2 + 1] ^= _t1;                                          // eor %[x0_h], %[x0_h], %[tmp1]
+    _t1 = x[4 * 2 + 1]; _t1 = !_t1; _t1 |= x[3 * 2 + 1];          // orn %[tmp1], %[x3_h], %[x4_h]
+                                                                  
+    x[2 * 2 + 1] ^= _t1;                                          // eor %[x2_h], %[x2_h], %[tmp1]
+    _t1 = x[0 * 2 + 1]; _t1 = !_t1; _t1 &= x[1 * 2 + 1];          // bic %[tmp1], %[x1_h], %[x0_h]
+                                                                  
+    x[4 * 2 + 1] ^= _t1;                                          // eor %[x4_h], %[x4_h], %[tmp1]
+    _t1 = x[2 * 2 + 1]; _t1 &= x[3 * 2 + 1];                      // and %[tmp1], %[x3_h], %[x2_h]
+                                                                  
+    x[1 * 2 + 1] ^= _t1;                                          // eor %[x1_h], %[x1_h], %[tmp1]
+    x[3 * 2 + 1] ^= _t0;                                          // eor %[x3_h], %[x3_h], %[tmp0]
+                                                                  
+    x[1 * 2 + 1] ^= x[0 * 2 + 1];                                 // eor %[x1_h], %[x1_h], %[x0_h]    
+    x[3 * 2 + 1] ^= x[2 * 2 + 1];                                 // eor %[x3_h], %[x3_h], %[x2_h]
+    x[0 * 2 + 1] ^= x[4 * 2 + 1];                                 // eor %[x0_h], %[x0_h], %[x4_h]
+
+    // Rotations
+    _x = x[0 * 2 + 1]; _t0 = rot_32(_x, 4); _t0 ^= x[0 * 2 + 0];  // eor %[tmp0], %[x0_l], %[x0_h], ror #4
+    _x = x[0 * 2 + 0]; _t1 = rot_32(_x, 5); _t1 ^= x[0 * 2 + 1];  // eor %[tmp1], %[x0_h], %[x0_l], ror #5
+    _t0 = rot_32(_t0, 10); x[0 * 2 + 1] ^= _t0;                   // eor %[x0_h], %[x0_h], %[tmp0], ror #10
+    _t1 = rot_32(_t1, 9);  x[0 * 2 + 0] ^= _t1;                   // eor %[x0_l], %[x0_l], %[tmp1], ror #9
+
+    _x = x[1 * 2 + 0]; _t0 = rot_32(_x, 11); _t0 ^= x[1 * 2 + 0]; // eor %[tmp0], %[x1_l], %[x1_l], ror #11
+    _x = x[1 * 2 + 1]; _t1 = rot_32(_x, 11); _t1 ^= x[1 * 2 + 1]; // eor %[tmp1], %[x1_h], %[x1_h], ror #11
+    _t0 = rot_32(_t0, 20); x[1 * 2 + 1] ^= _t0;                   // eor %[x1_h], %[x1_h], %[tmp0], ror #20
+    _t1 = rot_32(_t1, 19); x[1 * 2 + 0] ^= _t1;                   // eor %[x1_l], %[x1_l], %[tmp1], ror #19
+
+    _x = x[2 * 2 + 1]; _t0 = rot_32(_x, 2); _t0 ^= x[2 * 2 + 0];  // eor %[tmp0], %[x2_l], %[x2_h], ror #2
+    _x = x[2 * 2 + 0]; _t1 = rot_32(_x, 3); _t1 ^= x[2 * 2 + 1];  // eor %[tmp1], %[x2_h], %[x2_l], ror #3
+    _t0 = rot_32(_t0, 1); x[2 * 2 + 1] ^= _t0;                    // eor %[x2_h], %[x2_h], %[tmp0], ror #1
+    x[2 * 2 + 0] ^= _t1;                                          // eor %[x2_l], %[x2_l], %[tmp1]
+
+    _x = x[3 * 2 + 1]; _t0 = rot_32(_x, 3); _t0 ^= x[3 * 2 + 0];  // eor %[tmp0], %[x3_l], %[x3_h], ror #3
+    _x = x[3 * 2 + 0]; _t1 = rot_32(_x, 4); _t1 ^= x[3 * 2 + 1];  // eor %[tmp1], %[x3_h], %[x3_l], ror #4
+    _t0 = rot_32(_t0, 5); x[3 * 2 + 0] ^= _t0;                    // eor %[x3_l], %[x3_l], %[tmp0], ror #5
+    _t1 = rot_32(_t1, 5); x[3 * 2 + 1] ^= _t1;                    // eor %[x3_h], %[x3_h], %[tmp1], ror #5
+
+    _x = x[4 * 2 + 0]; _t0 = rot_32(_x, 17); _t0 ^= x[4 * 2 + 0]; // eor %[tmp0], %[x4_l], %[x4_l], ror #17
+    _x = x[4 * 2 + 1]; _t1 = rot_32(_x, 17); _t1 ^= x[4 * 2 + 1]; // eor %[tmp1], %[x4_h], %[x4_h], ror #17
+    _t0 = rot_32(_t0, 4); x[4 * 2 + 1] ^= _t0;                    // eor %[x4_h], %[x4_h], %[tmp0], ror #4
+    _t1 = rot_32(_t1, 3); x[4 * 2 + 0] ^= _t1;                    // eor %[x4_l], %[x4_l], %[tmp1], ror #3
+
+    return x;
+}
+
+inline
+fn ascon_p6(stack u32[10] x) -> stack u32[10] {
+    reg u32[10] _x;
+    _x[0] = x[0]; _x[1] = x[1]; _x[2] = x[2]; _x[3] = x[3]; _x[4] = x[4]; _x[5] = x[5]; _x[6] = x[6]; _x[7] = x[7]; _x[8] = x[8]; _x[9] = x[9];
+
+    _x = round(_x, 0x00000009, 0x00000006);
+    _x = round(_x, 0x00000009, 0x00000003);
+    _x = round(_x, 0x00000006, 0x0000000c);
+    _x = round(_x, 0x00000006, 0x00000009);
+    _x = round(_x, 0x00000003, 0x0000000c);
+    _x = round(_x, 0x00000003, 0x00000009);
+
+    x[0] = _x[0]; x[1] = _x[1]; x[2] = _x[2]; x[3] = _x[3]; x[4] = _x[4]; x[5] = _x[5]; x[6] = _x[6]; x[7] = _x[7]; x[8] = _x[8]; x[9] = _x[9];
+    return x;
+}                
+
+inline
+fn ascon_p8(stack u32[10] x) -> stack u32[10] {
+    reg u32[10] _x;
+    _x[0] = x[0]; _x[1] = x[1]; _x[2] = x[2]; _x[3] = x[3]; _x[4] = x[4]; _x[5] = x[5]; _x[6] = x[6]; _x[7] = x[7]; _x[8] = x[8]; _x[9] = x[9];
+
+    _x = round(_x, 0x0000000c, 0x00000006);
+    _x = round(_x, 0x0000000c, 0x00000003);
+    _x = round(_x, 0x00000009, 0x00000006);
+    _x = round(_x, 0x00000009, 0x00000003);
+    _x = round(_x, 0x00000006, 0x0000000c);
+    _x = round(_x, 0x00000006, 0x00000009);
+    _x = round(_x, 0x00000003, 0x0000000c);
+    _x = round(_x, 0x00000003, 0x00000009);
+
+    x[0] = _x[0]; x[1] = _x[1]; x[2] = _x[2]; x[3] = _x[3]; x[4] = _x[4]; x[5] = _x[5]; x[6] = _x[6]; x[7] = _x[7]; x[8] = _x[8]; x[9] = _x[9];
+    return x;
+}                
+
+inline
+fn ascon_p12(stack u32[10] x) -> stack u32[10] {
+    reg u32[10] _x;
+    _x[0] = x[0]; _x[1] = x[1]; _x[2] = x[2]; _x[3] = x[3]; _x[4] = x[4]; _x[5] = x[5]; _x[6] = x[6]; _x[7] = x[7]; _x[8] = x[8]; _x[9] = x[9];
+
+    _x = round(_x, 0x0000000c, 0x0000000c);
+    _x = round(_x, 0x0000000c, 0x00000009);
+    _x = round(_x, 0x00000009, 0x0000000c);
+    _x = round(_x, 0x00000009, 0x00000009);
+    _x = round(_x, 0x0000000c, 0x00000006);
+    _x = round(_x, 0x0000000c, 0x00000003);
+    _x = round(_x, 0x00000009, 0x00000006);
+    _x = round(_x, 0x00000009, 0x00000003);
+    _x = round(_x, 0x00000006, 0x0000000c);
+    _x = round(_x, 0x00000006, 0x00000009);
+    _x = round(_x, 0x00000003, 0x0000000c);
+    _x = round(_x, 0x00000003, 0x00000009);
+
+    x[0] = _x[0]; x[1] = _x[1]; x[2] = _x[2]; x[3] = _x[3]; x[4] = _x[4]; x[5] = _x[5]; x[6] = _x[6]; x[7] = _x[7]; x[8] = _x[8]; x[9] = _x[9];
+    return x;
+}                

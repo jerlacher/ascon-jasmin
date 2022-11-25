@@ -1,0 +1,223 @@
+// ----------------------------------------------------------------------------
+// Collection of helper functions related to 64 bit words.
+//
+// Notes/Todo:
+// - All functions assume a little endian machine!
+//
+// Sources:
+// - Ascon reference implementation (GitHub)
+//   https://github.com/ascon/ascon-c
+// ----------------------------------------------------------------------------
+
+require "interleave.jinc"
+
+
+// Reverse the byte order in an 32-bit word.
+// Should be equivalent to the x86 instruction BSWAP_32
+//
+// Note: Should be replaced by the REV instruction on Arm!
+//
+inline
+fn reverse_32(reg u32 x) -> reg u32 {
+    stack u32 _x;
+    reg u32 _t;
+
+    _x = x;
+    x = 0;
+    _t = _x;            _t &= 0xff; x |= _t << 24;
+    _t = _x; _t >>=  8; _t &= 0xff; x |= _t << 16;
+    _t = _x; _t >>= 16; _t &= 0xff; x |= _t <<  8;
+    _t = _x; _t >>= 24; _t &= 0xff; x |= _t;
+
+    return x;
+}
+
+// Generate a mask of the [n] most significant bytes for an 64-bit word
+// by two 32-bit registers.
+//
+// return: lower, upper 32-bit mask
+// 
+inline
+fn mask_32(reg u32 n) -> reg u32, reg u32 {
+    reg u32 _t, _pl, _ph, _n1, _n2;
+    _pl = 0xffffffff;
+    _ph = 0xffffffff;
+
+    _n1 = 8;
+    _n1 -= n;
+    _n2 = 8;
+    _n1 *= _n2;
+    _n2 = 64;
+    _n2 -= _n1;
+
+    _ph >>= _n1;
+    _t = _pl << _n2;
+    _ph |= _t;
+    _pl >>= _n1;
+
+    return _pl, _ph;
+}
+
+// Clear the [n] most significant bytes of a 64 bit word
+// represented by two 32-bit registers [xh:xl].
+//
+// return: lower, upper 32-bit mask
+//
+inline
+fn clear_bytes(reg u32 xh xl, reg u32 n) -> reg u32, reg u32 {
+    reg u32 _xh, _xl, _p, _n;
+
+    _xh = xh;
+    _xl = xl;
+
+    _n = 4;
+    _n *= n;
+    _p = 0xffffffff;
+    _p >>= _n;
+
+    _xh = xh;
+    _xh &= _p;
+    _xl = xl;
+    _xl &= _p;
+
+    return _xh, _xl;
+}
+
+// Load a 64-bit word from memory[addr] bit interleaved into two
+// 32-bit registers.
+// Assumes little endian encoding.
+//
+// return: lower, upper 32-bit
+//
+inline
+fn load_word(reg u32 addr) -> reg u32, reg u32 {
+    reg u32 hi, lo;
+
+    hi = (u32)[addr+4];
+    hi = reverse_32(hi);
+    lo = (u32)[addr];
+    lo = reverse_32(lo);
+
+    lo, hi = deinterleave32(lo, hi);
+
+    return lo, hi; 
+}
+
+// Store a 64-bit word represented by two bit interleaved 
+// 32-bit registers [hi:lo] into memory[addr].
+// Assumes little endian encoding.
+//
+inline
+fn store_word(reg u32 hi lo, reg u32 addr) {
+    reg u32 o e;
+
+    o = hi;
+    e = lo;
+
+    e, o = interleave32(e, o);
+
+    o = reverse_32(o);
+    e = reverse_32(e);
+
+    (u32)[addr+4] = o;
+    (u32)[addr]   = e;
+}
+
+// Load [n] bytes from memory[addr] into a 64-bit word into two
+// 32-bit registers (bit interleaved).
+// 
+// Notes: 
+// - Assumes little endian encoding.
+// - Assumes 64-bit aligned memory.
+//
+// return: lower, upper 32-bit
+//
+inline
+fn load_bytes(reg u32 addr, reg u32 n) -> reg u32, reg u32 {
+    reg u32 hi, lo, _ph, _pl, _n;
+
+    hi = (u32)[addr+4];
+    lo = (u32)[addr];
+
+    _n = n;
+    _pl, _ph = mask_32(_n);
+
+    hi &= _pl;
+    lo &= _ph;
+
+    hi = reverse_32(hi);
+    lo = reverse_32(lo);
+
+    lo, hi = deinterleave32(lo, hi);
+
+    return lo, hi; 
+}
+
+// Store the [n] most significant bytes of a 64-bit word represented by 
+// two 32-bit registers (bit interleaved) into memory[addr].
+// 
+// Notes: 
+// - Assumes little endian encoding.
+// - Assumes 64-bit aligned memory.
+//
+inline
+fn store_bytes(reg u32 hi lo, reg u32 addr, reg u32 n) {
+    reg u32 o, e, _ph, _pl, _n;
+
+    o = hi;
+    e = lo;
+
+    e, o = interleave32(e, o);
+
+    o = reverse_32(o);
+    e = reverse_32(e);
+
+    _n = n;
+    _pl, _ph = mask_32(_n);
+
+    lo &= _pl;
+    hi &= _ph;
+
+    (u32)[addr+4] = o;
+    (u32)[addr]   = e;
+}
+
+// Apply a padding of 1|* to a 64-bit word represented by two
+// 32-bit registers [xh:xl] (bit interleaved).
+//
+// returns: upper, lower
+inline
+fn pad(reg u32 xh xl, reg u32 n) -> reg u32, reg u32 {
+    reg u32 _p, _n1, _n2;
+    _n2 = n;
+    _n1 = 4;
+    _n2 *= _n1;
+    _n1 = 28;
+    _n1 -= _n2;
+    _p = 0x08;
+    _p <<= _n1;
+    xh ^= _p;
+
+    return xh, xl;
+}
+
+// Given a value [x] returns
+// - 0          if x == 0
+// - 0xffffffff otherwise
+//
+inline
+fn not_zero(reg u32 x) -> reg u32 {
+    reg u32 _t;
+    _t = x;
+
+    _t >>= 16; x |= _t; _t = x;
+    _t >>=  8; x |= _t;
+
+    x &= 0xff;
+    x -= 1;
+    x >>= 8;
+    x &= 0x1;
+    x -= 1;
+
+    return x;
+}

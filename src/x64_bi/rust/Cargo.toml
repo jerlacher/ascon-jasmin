@@ -1,0 +1,20 @@
+[package]
+name = "ascon-jasmin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ascon-core = "0.1.2"
+ascon-aead = "0.4.0"
+safe-transmute = "0.11.2"
+
+[dev-dependencies]
+rand = "0.8.5"
+hex = "0.4"
+spectral = "0.6.0"
+criterion = "0.3.0"
+criterion-cycles-per-byte = "0.1.2"
+
+[[bench]]
+name = "asconbench"
+harness = false

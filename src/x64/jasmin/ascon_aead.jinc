@@ -1,0 +1,98 @@
+// ----------------------------------------------------------------------------
+// Configurable implementation of Ascon's encryption scheme with
+// associated data. (Ascon128, Ascon128a).
+// 
+// ASSUMPTIONS:
+// - encrypt: Writes tag to the start of the ciphertext.
+// - decrypt: Expects tag at the start of the ciphertext.
+//
+// REQUIRES PARAMETER THE FOLLOWING PARAMETERS WHEN INCLUDED:
+// - 'ASCON_RATE' = 16|8
+// - 'ASCON_IV'
+//
+// Sources:
+// - Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer:
+//   Ascon v1.2 Submission to NIST 
+//   https://doi.org/10.1007/s00145-021-09398-9
+// - Ascon reference implementation (GitHub)
+//   https://github.com/ascon/ascon-c
+// ----------------------------------------------------------------------------
+
+
+require "ascon_core.jinc"
+require "ascon_p.jinc"
+require "word.jinc"
+
+
+inline
+fn encrypt(reg u64 m c mlen a alen p) -> reg u64 {
+    stack u64[2] _k;
+    stack u64[2] _n;
+    stack u64 _t;
+
+    reg u64[5] x;
+    reg u64 res;
+
+    // Store pointer to tag (start of ciphertext)
+    _t = c;
+    c += 16;
+
+    // Load Nonce + Key
+    _n, _k = ascon_load_key_nonce(p);
+
+    // Init
+    x = ascon_init(_n, _k);
+
+    // Additional data
+    x = ascon_adata(x, a, alen);
+
+    // Encrypt
+    x = ascon_encrypt(x, m, c, mlen);
+
+    //// Finalize 
+    x = ascon_finalize(x, _k);
+
+    // Tag
+    c = _t;
+    store_word(x[3], c);  
+    c += 8;
+    store_word(x[4], c);  
+
+    res = 0;
+    return res;
+}
+
+inline
+fn decrypt(reg u64 m c clen a alen p) -> reg u64 {
+    stack u64[2] _k;
+    stack u64[2] _n;
+    stack u64 _t;
+
+    reg u64[5] x;
+    reg u64 t1, t2;
+
+    // Store pointer to tag (start of ciphertext)
+    _t = c;
+
+    // Load Key and Nonce
+    _n, _k = ascon_load_key_nonce(p);
+
+    // Init
+    x = ascon_init(_n, _k);
+
+    // Additional data
+    x = ascon_adata(x, a, alen);
+
+    // Decrypt
+    // ------------------------------------------------------------------------
+    x = ascon_decrypt(x, m, c, clen);
+
+    // Finalize 
+    x = ascon_finalize(x, _k);
+
+    // Validate tag
+    reg u64 res;
+    res = ascon_validate_tag(x, _t);
+    return res;
+    // ------------------------------------------------------------------------
+}
