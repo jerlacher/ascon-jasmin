@@ -129,17 +129,6 @@ The KAT tests are based on the implemenation in Rust [ascon-aead](https://github
 Benchmarks are implemented via the [criterion](https://docs.rs/criterion/latest/criterion/) package, with the additional extension [criterion-cycle-per-byte](https://docs.rs/criterion-cycles-per-byte/latest/criterion_cycles_per_byte/).
 The benchmarks are heavily reliant on the general load of the system and should only be seen as a point of reference!
 
-### Jasmin
-- [Jasmin Lang (git)](https://github.com/jasmin-lang/jasmin)
-- [libjade](https://github.com/formosa-crypto/libjade)
-- [Using EasyCrypt and Jasmin for post-quantum verification](https://blog.cloudflare.com/post-quantum-easycrypt-jasmin/)
-
-### EasyCrypt
-- [EasyCrypt Lecture](https://formosa-crypto.org/news/2022-06-07/sibenik)
-- [EasyCrypt Video Tutorial](https://media.easycrypt.info/JasminECTutorial.mp4)
-- [EasyCrypt Examples EasyTeach](https://github.com/alleystoughton/EasyTeach)
-- [EasyCrypt-Doc](https://github.com/EasyCrypt/easycrypt-doc)
-
 ## Notes
 ### Jasmin Quirks (ARM)
 As of working on this project we found some minor errors in the `Arm` assembly output of the Jasmin compiler.
@@ -157,4 +146,15 @@ As of working on this project we found some minor errors in the `Arm` assembly o
 - Juriaan Drunen: **Calling Jasmin from Rust**. Master Thesis Eindhoven University of Technology, 2021. https://pure.tue.nl/ws/portalfiles/portal/199766729/Drunen_Jl.pdf
 
 - José Bacelar Almeida, Manuel Barbosa, Gilles Barthe, Benjamin Grégoire, Adrien Koutsos, Vincent Laporte, Tiago Oliveira, Pierre-Yves Strub: **The Last Mile: High-Assurance and High-Speed Cryptographic Implementations**. IEEE Symposium on Security and Privacy 2020. https://doi.org/10.1109/SP40000.2020.00028
+
+### Jasmin
+- [Jasmin Lang (git)](https://github.com/jasmin-lang/jasmin)
+- [libjade](https://github.com/formosa-crypto/libjade)
+- [Using EasyCrypt and Jasmin for post-quantum verification](https://blog.cloudflare.com/post-quantum-easycrypt-jasmin/)
+
+### EasyCrypt
+- [EasyCrypt Lecture](https://formosa-crypto.org/news/2022-06-07/sibenik)
+- [EasyCrypt Video Tutorial](https://media.easycrypt.info/JasminECTutorial.mp4)
+- [EasyCrypt Examples EasyTeach](https://github.com/alleystoughton/EasyTeach)
+- [EasyCrypt-Doc](https://github.com/EasyCrypt/easycrypt-doc)
 
